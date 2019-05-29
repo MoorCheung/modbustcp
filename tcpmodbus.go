@@ -46,6 +46,30 @@ type ReqData struct {
 	Value int32
 }
 var tcpWrite = make(chan []byte,10)
+type RespData struct {
+	Code int32
+	Data []*tool.DeviceInfo
+}
+func RouterList(resp http.ResponseWriter, req *http.Request) {
+	body, _ := ioutil.ReadAll(req.Body)
+	//defer  req.Body.Close()
+	reqData := &ReqData{}
+	json.Unmarshal(body,reqData)
+	//results := ModbusWrite(2,reqData)
+	//tcpWrite <- results
+
+	resp.Header().Set("Content-Type","application/json")
+	infos := tool.DeviceList
+	var lists []*tool.DeviceInfo
+	for _,v := range infos {
+		lists = append(lists,v)
+	}
+	data := &RespData{}
+	data.Code = 200
+	data.Data = lists
+	byte,_ := json.Marshal(data)
+	resp.Write(byte)
+}
 func Router(resp http.ResponseWriter, req *http.Request) {
 	body, _ := ioutil.ReadAll(req.Body)
 	//    r.Body.Close()
@@ -73,6 +97,7 @@ func Router(resp http.ResponseWriter, req *http.Request) {
 func ModbusWrite(SlaveId int,data *ReqData)[]byte{
 	handler := &tool.TcpHandler{}
 	handler.SlaveId = 2
+
 	server := tool.NewServer(handler)
 	fmt.Println(data,uint16(data.Id))
 	var results []byte
@@ -93,8 +118,10 @@ func ModbusWrite(SlaveId int,data *ReqData)[]byte{
 	//results, _ := server.ServerWriteSingleRegister(uint16(address),uint16(data.Value))
 	return results
 }
+
 func  main(){
 	http.HandleFunc("/test", Router)
+	http.HandleFunc("/list", RouterList)
 	go http.ListenAndServe("0.0.0.0:8088", nil)
 	//初始化tcp
 	netListen, err := net.Listen("tcp", ":9001")
@@ -108,14 +135,17 @@ func  main(){
 		}
 
 		log.Log(conn.RemoteAddr().String(), " tcp connect success")
+		tcpConn := &tool.TcpConn{}
+		tcpConn.Conn = conn
+		tcpConn.Time = time.Now()
 		//协程读
-		go TcphandleConnection(conn)
+		go TcphandleConnection(tcpConn)
 		//协程写
-		go TcpWrite(conn)
-		go TesttcpWrite()
+		go TcpWrite(tcpConn)
+		//go TesttcpWrite()
 	}
 }
-func TcpWrite(conn net.Conn){
+func TcpWrite(C *tool.TcpConn){
 	//通过通道进行写
 	for {
 		select {
@@ -123,7 +153,7 @@ func TcpWrite(conn net.Conn){
 			fmt.Println("发送数据",results)
 			fmt.Sprintf("%x",results)
 			//results,err := server.ServerReadHoldingRegisters(2,1)
-			conn.Write(results)
+			C.Conn.Write(results)
 		}
 	}
 }
@@ -148,34 +178,42 @@ func TesttcpWrite(){
 	//}
 }
 
-func TcphandleConnection(conn net.Conn){
+func TcphandleConnection(C *tool.TcpConn){
 	for   {
 		buf := make([]byte,2048)
-		msg,err := tool.Unpack(conn,buf)
+		msg,err := tool.Unpack(C,buf)
 		if err != nil {
-			conn.Close()
+			tool.DeviceList[C.DeviceNum].Online = false
+			C.Conn.Close()
 			break
 		}else{
-			handler := tool.TcpHandler{}
-			handler.SlaveId = 2
-			pdu,err := handler.Decode(msg)
-			fmt.Println("pdu",pdu,err)
-			switch pdu.FunctionCode {
-			case 3:
-				fmt.Println("接收功能码03",time.Now(),pdu.Data)
-				for k,v := range pdu.Data{
-					fmt.Println(k,v)
-					name := funmap3[k]
-					fmt.Println(name,v)
+			if string(msg) == "ok" {
+				C.Online = true
+				tool.DeviceList[C.DeviceNum].Online = true
+				fmt.Println("reg ok",C.Address,C.DeviceNum)
+			}else{
+				handler := tool.TcpHandler{}
+				handler.SlaveId = C.Address
+				pdu,err := handler.Decode(msg)
+				fmt.Println("pdu",pdu,err)
+				switch pdu.FunctionCode {
+				case 3:
+					fmt.Println("接收功能码03",time.Now(),pdu.Data)
+					for k,v := range pdu.Data{
+						fmt.Println(k,v)
+						name := funmap3[k]
+						fmt.Println(name,v)
+					}
+				case 1:
+					fmt.Println("01功能码")
+					fmt.Println("接收功能码03",time.Now(),pdu.Data)
+					for k,v := range pdu.Data{
+						fmt.Println(k,v)
+						name := funmap1[k]
+						fmt.Println(name,v)
+					}
 				}
-			case 1:
-				fmt.Println("01功能码")
-				fmt.Println("接收功能码03",time.Now(),pdu.Data)
-				for k,v := range pdu.Data{
-					fmt.Println(k,v)
-					name := funmap1[k]
-					fmt.Println(name,v)
-				}
+
 			}
 
 		}
