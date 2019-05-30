@@ -3,6 +3,7 @@ package tool
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/imroc/biu"
 	"net"
 	"strconv"
 	"time"
@@ -93,4 +94,36 @@ func Unpack(C *TcpConn,buf []byte) ([]byte, error) {
 }
 func CheckError(err error){
 	fmt.Println(err)
+}
+/**
+	开关量1和0
+ */
+func KaiGuan(b []byte) []string {
+	var arr = make([]string,len(b) *8)
+	fmt.Println(b)
+	for k,v := range b {
+		//formatInt := strconv.FormatInt(int64(v), 2)
+		formatInt := biu.ToBinaryString(uint8(v))
+		//fmt.Println(formatInt)
+		for kk,vv := range formatInt {
+			//fmt.Println("第几列",k,string(vv),formatInt)
+			arr[8*(k+1)-1-kk] = string(vv)
+		}
+	}
+	//fmt.Println(arr)
+	//for k,v := range arr {
+	//	fmt.Println("k",k,v)
+	//}
+	return arr
+}
+func FuncDecode(b []byte)[]int{
+	var arr = []int{}
+	for k,_ :=range  b{
+		if k % 2 == 1 {
+
+			arr = append(arr,BytesToInt(b[k-1:k+1]))
+		}
+	}
+	fmt.Println(arr)
+	return arr
 }

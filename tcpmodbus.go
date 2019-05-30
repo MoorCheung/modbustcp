@@ -49,7 +49,11 @@ var tcpWrite = make(chan []byte,10)
 type RespData struct {
 	Code int32
 	Data []*tool.DeviceInfo
+	KaiGaun []string
+	FuncValue []int
 }
+var Kaiguan []string
+var FuncValue []int
 func RouterList(resp http.ResponseWriter, req *http.Request) {
 	body, _ := ioutil.ReadAll(req.Body)
 	//defer  req.Body.Close()
@@ -70,7 +74,26 @@ func RouterList(resp http.ResponseWriter, req *http.Request) {
 	byte,_ := json.Marshal(data)
 	resp.Write(byte)
 }
+func RouterResult(resp http.ResponseWriter, req *http.Request) {
+	body, _ := ioutil.ReadAll(req.Body)
+	//defer  req.Body.Close()
+	reqData := &ReqData{}
+	json.Unmarshal(body,reqData)
+	//results := ModbusWrite(2,reqData)
+	//tcpWrite <- results
+	resp.Header().Set("Content-Type","application/json")
+	data := &RespData{}
+	data.Code = 200
+	data.KaiGaun = Kaiguan
+	data.FuncValue = FuncValue
+	byte,_ := json.Marshal(data)
+	resp.Write(byte)
+}
 func Router(resp http.ResponseWriter, req *http.Request) {
+	var b = []byte{196,255,1}
+	Kaiguan = tool.KaiGuan(b)
+	var c = []byte{00,01,00,03}
+	FuncValue = tool.FuncDecode(c)
 	body, _ := ioutil.ReadAll(req.Body)
 	//    r.Body.Close()
 	reqData := &ReqData{}
@@ -122,6 +145,7 @@ func ModbusWrite(SlaveId int,data *ReqData)[]byte{
 func  main(){
 	http.HandleFunc("/test", Router)
 	http.HandleFunc("/list", RouterList)
+	http.HandleFunc("/result", RouterResult)
 	go http.ListenAndServe("0.0.0.0:8088", nil)
 	//初始化tcp
 	netListen, err := net.Listen("tcp", ":9001")
@@ -198,20 +222,9 @@ func TcphandleConnection(C *tool.TcpConn){
 				fmt.Println("pdu",pdu,err)
 				switch pdu.FunctionCode {
 				case 3:
-					fmt.Println("接收功能码03",time.Now(),pdu.Data)
-					for k,v := range pdu.Data{
-						fmt.Println(k,v)
-						name := funmap3[k]
-						fmt.Println(name,v)
-					}
+					Kaiguan = tool.KaiGuan(pdu.Data)
 				case 1:
-					fmt.Println("01功能码")
-					fmt.Println("接收功能码03",time.Now(),pdu.Data)
-					for k,v := range pdu.Data{
-						fmt.Println(k,v)
-						name := funmap1[k]
-						fmt.Println(name,v)
-					}
+					FuncValue  = tool.FuncDecode(pdu.Data[1:])
 				}
 
 			}
