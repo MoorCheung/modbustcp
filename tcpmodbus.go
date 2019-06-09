@@ -8,49 +8,26 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
-var funmap1 = map[int]string{
-	0:"屏启动",
-	1:"屏停止",
-	2:"屏报警消音",
-	3:"运行标识",
-	4:"点火完成",
-	5:"温度上限警告",
-	6:"点火报警1",
-	7:"点火报警2",
-	8:"火灭报警",
-	9:"风机反馈",
-	10:"风机反馈",
-	11:"火焰反馈",
-	12:"变频故障",
-	13:"点火反馈",
-	14:"报警器",
-	15:"开阀",
-	16:"变频启停",
-	17:"点火线圈",
 
-}
-var funmap3 = map[int]string{
-	0:"吹扫延时设定",
-	1:"点火延时设定",
-	2:"设定温度",
-	3:"温度上限",
-	4:"实际温度",
-	5:"调节阀开度输出",
-	6:"风机吹扫延时",
-	7:"点火延时",
-}
+
 type ReqData struct {
 	Id int32
 	Value int32
+	PlcAddress string
 }
 var tcpWrite = make(chan []byte,10)
 type RespData struct {
 	Code int32
 	Data []*tool.DeviceInfo
-	KaiGaun []string
+	KaiGuan []string
 	FuncValue []int
+	MapData *tool.DTU
+	PLcData map[uint16]*tool.PLC
+	DtuData *tool.DTU
+	Points []*tool.Point
 }
 var Kaiguan []string
 var FuncValue []int
@@ -84,15 +61,89 @@ func RouterResult(resp http.ResponseWriter, req *http.Request) {
 	resp.Header().Set("Content-Type","application/json")
 	data := &RespData{}
 	data.Code = 200
-	data.KaiGaun = Kaiguan
+	data.KaiGuan = Kaiguan
 	data.FuncValue = FuncValue
+	//data.MapData = funmap2
+	byte,_ := json.Marshal(data)
+	resp.Write(byte)
+}
+//获取我自己dtu 下对应的设备
+func RouterMydtu(resp http.ResponseWriter, req *http.Request) {
+	body, _ := ioutil.ReadAll(req.Body)
+	//defer  req.Body.Close()
+	reqData := &ReqData{}
+	json.Unmarshal(body,reqData)
+	//results := ModbusWrite(2,reqData)
+	//tcpWrite <- results
+	resp.Header().Set("Content-Type","application/json")
+	data := &RespData{}
+	data.Code = 200
+	//通过设备id 获取dtu
+	dtu := tool.DTUS["abcdef"]
+	var plcs = []*tool.PLC{}
+	for _,v := range dtu.PLCS {
+		plcs = append(plcs,v)
+	}
+	data.PLcData = dtu.PLCS
+	data.DtuData = dtu
+	byte,_ := json.Marshal(data)
+	resp.Write(byte)
+}
+//我的plc设备
+func RouterMyplc(resp http.ResponseWriter, req *http.Request) {
+	body, _ := ioutil.ReadAll(req.Body)
+	//defer  req.Body.Close()
+	reqData := &ReqData{}
+	json.Unmarshal(body,reqData)
+	//results := ModbusWrite(2,reqData)
+	//tcpWrite <- results
+	resp.Header().Set("Content-Type","application/json")
+	data := &RespData{}
+	data.Code = 200
+	//通过设备id 获取dtu
+	dtu := tool.DTUS["abcdef"]
+	//var plcs = []*tool.PLC{}
+	//for _,v := range dtu.PLCS {
+	//	plcs = append(plcs,v)
+	//}
+	i,_ := strconv.Atoi(reqData.PlcAddress)
+	plc := dtu.PLCS[uint16(i)]
+	var Points  []*tool.Point
+
+	tool.GormDb.Model(Points).Order("sort asc").Find(&Points)
+	var r = make(map[uint16]int)
+	for _,v := range plc.Points {
+		r[v.ModbusAddress] = v.Value
+	}
+	for _,v := range Points {
+		//fmt.Println(v.ModbusAddress,r,r[v.ModbusAddress])
+		v.Value = r[v.ModbusAddress]
+	}
+	data.Points = Points
+	byte,_ := json.Marshal(data)
+	resp.Write(byte)
+}
+//写入数据
+func RouterWrite(resp http.ResponseWriter, req *http.Request) {
+	body, _ := ioutil.ReadAll(req.Body)
+	fmt.Println(body)
+	//defer  req.Body.Close()
+	reqData := &ReqData{}
+	json.Unmarshal(body,reqData)
+	fmt.Println(reqData)
+	results := ModbusWrite(2,reqData)
+	//tool.DTUS["abcdef"].PLCS["2"].
+	tcpWrite <- results
+	resp.Header().Set("Content-Type","application/json")
+	data := &RespData{}
+	data.Code = 200
 	byte,_ := json.Marshal(data)
 	resp.Write(byte)
 }
 func Router(resp http.ResponseWriter, req *http.Request) {
 	var b = []byte{196,255,1}
 	Kaiguan = tool.KaiGuan(b)
-	var c = []byte{00,01,00,03}
+	var c = []byte{00,01,00,03,00,64,00,100,00,32,00,20,00,10,00,40}
 	FuncValue = tool.FuncDecode(c)
 	body, _ := ioutil.ReadAll(req.Body)
 	//    r.Body.Close()
@@ -122,7 +173,7 @@ func ModbusWrite(SlaveId int,data *ReqData)[]byte{
 	handler.SlaveId = 2
 
 	server := tool.NewServer(handler)
-	fmt.Println(data,uint16(data.Id))
+	//fmt.Println(data,uint16(data.Id))
 	var results []byte
 	if data.Id > 17 {
 		address := data.Id -18
@@ -143,9 +194,13 @@ func ModbusWrite(SlaveId int,data *ReqData)[]byte{
 }
 
 func  main(){
+	tool.InitPlc()
 	http.HandleFunc("/test", Router)
 	http.HandleFunc("/list", RouterList)
 	http.HandleFunc("/result", RouterResult)
+	http.HandleFunc("/mydtu", RouterMydtu)
+	http.HandleFunc("/myplc", RouterMyplc)
+	http.HandleFunc("/write", RouterWrite)
 	go http.ListenAndServe("0.0.0.0:8088", nil)
 	//初始化tcp
 	netListen, err := net.Listen("tcp", ":9001")
@@ -166,7 +221,7 @@ func  main(){
 		go TcphandleConnection(tcpConn)
 		//协程写
 		go TcpWrite(tcpConn)
-		//go TesttcpWrite()
+		go TickRead(tcpConn)
 	}
 }
 func TcpWrite(C *tool.TcpConn){
@@ -175,17 +230,35 @@ func TcpWrite(C *tool.TcpConn){
 		select {
 		case results := <- tcpWrite :
 			fmt.Println("发送数据",results)
-			fmt.Sprintf("%x",results)
 			//results,err := server.ServerReadHoldingRegisters(2,1)
 			C.Conn.Write(results)
 		}
 	}
 }
-func TesttcpWrite(){
-	//handler := &tool.TcpHandler{}
-	//handler.SlaveId = 2
-	//server := tool.NewServer(handler)
-	//results, err := server.ServerReadHoldingRegisters(0, 8)
+func TickRead(C *tool.TcpConn){
+	handler := &tool.TcpHandler{}
+	if C.DeviceNum != "" {
+		//dtu上线获取dtu下所有plc 循环对plc发送命令
+		plcs := tool.DTUS[C.DeviceNum].PLCS
+		for _,plc := range plcs {
+			i,_ := strconv.Atoi(plc.PLCAddress)
+			fmt.Println("plc设备地址",plc.PLCAddress)
+			handler.SlaveId = byte(i)
+			server := tool.NewServer(handler)
+			//获取开关量
+			results, err := server.ServerReadCoils(0, 18)
+			results1, err := server.ServerReadHoldingRegisters(0, 8)
+			fmt.Println(err)
+			for {
+				tcpWrite <- results
+				time.Sleep(1*time.Second)
+				tcpWrite <- results1
+				time.Sleep(1*time.Second)
+			}
+		}
+
+	}
+
 	//bytes, e := server.ServerWriteSingleRegister(2, 10)
 	//bytes, e := server.ServerWriteMultipleRegisters(0,8,[]byte{0,1,0,2,0,80,0,100,0,60,0,1,0,2,0,3})
 	//bytes, e := server.ServerWriteMultipleCoils(0,18,[]byte{0xff,0xff,3})
@@ -213,18 +286,37 @@ func TcphandleConnection(C *tool.TcpConn){
 		}else{
 			if string(msg) == "ok" {
 				C.Online = true
-				tool.DeviceList[C.DeviceNum].Online = true
+				tool.DTUS[C.DeviceNum].Online = true //dtu设备在线
+				tool.DTUS[C.DeviceNum].Time = time.Now().Unix()
 				fmt.Println("reg ok",C.Address,C.DeviceNum)
 			}else{
 				handler := tool.TcpHandler{}
 				handler.SlaveId = C.Address
-				pdu,err := handler.Decode(msg)
-				fmt.Println("pdu",pdu,err)
+				pdu,_ := handler.Decode(msg)
+				//fmt.Println("pdu",pdu,err,msg[6:7],msg)
+				//fmt.Println(tool.DTUS[C.DeviceNum].PLCS)
+				tool.DTUS[C.DeviceNum].PLCS[uint16(pdu.Address)].Online = true
 				switch pdu.FunctionCode {
-				case 3:
-					Kaiguan = tool.KaiGuan(pdu.Data)
 				case 1:
+					Kaiguan = tool.KaiGuan(pdu.Data[1:])
+					//fmt.Println(pdu.Data,"Kaiguan",Kaiguan, len(Kaiguan))
+					//fmt.Println(tool.DTUS["abcdef"].PLCS)
+					for k,v := range Kaiguan {
+						kstr := strconv.Itoa(k)
+						//fmt.Println(kstr,tool.DTUS["abcdef"].PLCS["02"])
+						vstr,_ := strconv.Atoi(v)
+						if value,ok := tool.DTUS[C.DeviceNum].PLCS[uint16(vstr)]; ok {
+							//fmt.Println("1:" + kstr)
+							if val,ok1 := value.Points["1:" + kstr];ok1 {
+								val.Value = vstr
+							}
+
+						}
+
+					}
+				case 3:
 					FuncValue  = tool.FuncDecode(pdu.Data[1:])
+					fmt.Println("funcvalue:",FuncValue)
 				}
 
 			}
