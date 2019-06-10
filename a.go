@@ -1,38 +1,34 @@
 package main
 
 import (
-	"ServerModbus/tool"
-	"encoding/binary"
-	"fmt"
+	"log"
+	"net"
+	"time"
 )
-func dataBlock(value ...uint16) []byte {
-	data := make([]byte, 2*len(value))
-	for i, v := range value {
-		binary.BigEndian.PutUint16(data[i*2:], v)
+
+func main() {
+	log.Println("begin dial...")
+	conn, err := net.Dial("tcp", ":9001")
+	if err != nil {
+		log.Println("dial error:", err)
+		return
 	}
-	return data
-}
-func dataBlockSuffix(suffix []byte, value ...uint16) []byte {
-	length := 2 * len(value)
-	data := make([]byte, length+1+len(suffix))
-	for i, v := range value {
-		binary.BigEndian.PutUint16(data[i*2:], v)
-	}
-	data[length] = uint8(len(suffix))
-	copy(data[length+1:], suffix)
-	return data
-}
-func main(){
-	var b = []byte{04,00,02,00,03,00,15}
-	var arr = []int{}
-	for k,_ :=range b[1:] {
-		if k % 2 == 1 {
-			arr = append(arr,tool.BytesToInt(b[1:][k-1:k+1]))
+	defer conn.Close()
+	log.Println("dial ok")
+
+	data := make([]byte, 65536)
+	var total int
+	for {
+		n, err := conn.Write(data)
+		if err != nil {
+			total += n
+			log.Printf("write %d bytes, error:%s\n", n, err)
+			break
 		}
-
+		total += n
+		log.Printf("write %d bytes this time, %d bytes in total\n", n, total)
 	}
-	fmt.Println(arr)
-	//a输出结果:00011110
 
-
+	log.Printf("write %d bytes in total\n", total)
+	time.Sleep(time.Second * 10000)
 }

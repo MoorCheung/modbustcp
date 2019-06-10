@@ -207,13 +207,14 @@ func TcphandleConnection(C *tool.TcpConn){
 		buf := make([]byte,2048)
 		msg,err := tool.Unpack(C,buf)
 		if err != nil {
-			tool.DeviceList[C.DeviceNum].Online = false
+			//tool.DeviceList[C.DeviceNum].Online = false
+			fmt.Println("err:",err)
 			C.Conn.Close()
 			break
 		}else{
 			if string(msg) == "ok" {
 				C.Online = true
-				tool.DeviceList[C.DeviceNum].Online = true
+				//tool.DeviceList[C.DeviceNum].Online = true
 				fmt.Println("reg ok",C.Address,C.DeviceNum)
 			}else{
 				handler := tool.TcpHandler{}
