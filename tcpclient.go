@@ -26,12 +26,27 @@ func TcpConn(){
 			str := "abcdef02"
 			tcpconn.Write([]byte(str))
 			go TcpRead(tcpconn)
+			go TcpClientWrite(tcpconn)
 			go Tick()
 		}
 	}
 
 }
 var TcpReadChan = make(chan []byte,1000)
+var TcpWritedChan = make(chan []byte,1000)
+func TcpClientWrite(c *net.TCPConn){
+	for {
+		select {
+		case byte,ok := <- TcpWritedChan :
+			if ok {
+				_,err := c.Write(byte)
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		}
+	}
+}
 func TcpRead(c *net.TCPConn){
 	for {
 		buf := make([]byte,2048)
@@ -67,8 +82,14 @@ func Tick(){
 		select {
 		case bytes,ok := <- TcpReadChan:
 			if ok {
-				fmt.Println("接收消息",string(bytes))
-
+				fmt.Println("接收消息",bytes,string(bytes))
+				handler := tool.TcpHandler{}
+				pdu,_ := handler.Decode(bytes)
+				if  pdu.FunctionCode == 1 {
+					bb := []byte{0,0,0,0,0,6,02,01,03,0xff,0xff,0x02}
+					fmt.Println("回复消息",bb)
+					TcpWritedChan<- bb
+				}
 			}
 
 		}

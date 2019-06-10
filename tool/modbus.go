@@ -78,6 +78,7 @@ type tcpPackager struct {
 }
 // ProtocolDataUnit (PDU) is independent of underlying communication layers.
 type ProtocolDataUnit struct {
+	Address byte
 	FunctionCode byte
 	Data         []byte
 }
@@ -150,6 +151,7 @@ func (mb *tcpPackager) Decode(adu []byte) (pdu *ProtocolDataUnit, err error) {
 	}
 	pdu = &ProtocolDataUnit{}
 	// The first byte after header is function code
+	pdu.Address = adu[tcpHeaderSize-1]
 	pdu.FunctionCode = adu[tcpHeaderSize]
 	pdu.Data = adu[tcpHeaderSize+1:]
 	return
