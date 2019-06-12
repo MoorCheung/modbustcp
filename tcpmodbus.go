@@ -221,7 +221,7 @@ func  main(){
 		go TcphandleConnection(tcpConn)
 		//协程写
 		go TcpWrite(tcpConn)
-		go TickRead(tcpConn)
+
 	}
 }
 func TcpWrite(C *tool.TcpConn){
@@ -288,18 +288,23 @@ func TcphandleConnection(C *tool.TcpConn){
 
 		msg,err := tool.Unpack(buf)
 		if err != nil {
-			tool.DeviceList[C.DeviceNum].Online = false
+			//tool.DeviceList[C.DeviceNum].Online = false
+			fmt.Println("err:",err)
 			C.Conn.Close()
 			break
 		}else{
 			if string(msg) == "ok" {
 				C.Online = true
+				//tool.DeviceList[C.DeviceNum].Online = true
 				tool.DTUS[C.DeviceNum].Online = true //dtu设备在线
 				tool.DTUS[C.DeviceNum].Time = time.Now().Unix()
 				fmt.Println("reg ok",C.Address,C.DeviceNum)
+				go TickRead(C)
 			}else{
 				handler := tool.TcpHandler{}
 				handler.SlaveId = C.Address
+				fmt.Println("server 接收数据",msg)
+
 				pdu,_ := handler.Decode(msg)
 				//fmt.Println("pdu",pdu,err,msg[6:7],msg)
 				//fmt.Println(tool.DTUS[C.DeviceNum].PLCS)
