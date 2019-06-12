@@ -278,7 +278,15 @@ func TickRead(C *tool.TcpConn){
 func TcphandleConnection(C *tool.TcpConn){
 	for   {
 		buf := make([]byte,2048)
-		msg,err := tool.Unpack(C,buf)
+		headBuf := buf[:6] //读取前6位 获取长度
+		n,err := C.Conn.Read(headBuf)
+		if err != nil {
+			fmt.Println(err)
+		}else{
+
+		}
+
+		msg,err := tool.Unpack(buf)
 		if err != nil {
 			tool.DeviceList[C.DeviceNum].Online = false
 			C.Conn.Close()
