@@ -44,6 +44,7 @@ func handleConnection(conn net.Conn) {
 		}
 
 		tmpBuffer = tool.Unpack(append(tmpBuffer, buffer[:n]...), readerChannel)
+		fmt.Println("tmpBuffer",tmpBuffer)
 	}
 }
 

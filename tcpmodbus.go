@@ -40,11 +40,8 @@ func RouterList(resp http.ResponseWriter, req *http.Request) {
 	//tcpWrite <- results
 
 	resp.Header().Set("Content-Type","application/json")
-	infos := tool.DeviceList
 	var lists []*tool.DeviceInfo
-	for _,v := range infos {
-		lists = append(lists,v)
-	}
+
 	data := &RespData{}
 	data.Code = 200
 	data.Data = lists
@@ -276,65 +273,39 @@ func TickRead(C *tool.TcpConn){
 }
 
 func TcphandleConnection(C *tool.TcpConn){
-	for   {
-		buf := make([]byte,2048)
-		headBuf := buf[:6] //读取前6位 获取长度
-		n,err := C.Conn.Read(headBuf)
-		if err != nil {
-			fmt.Println(err)
-		}else{
+	//声明一个临时缓冲区，用来存储被截断的数据
+	tmpBuffer := make([]byte, 0)
 
+	//声明一个管道用于接收解包的数据
+	readerChannel := make(chan []byte, 16)
+	go tcpreader(C ,readerChannel)
+
+	buffer := make([]byte, 1024)
+	for {
+		n, err := C.Conn.Read(buffer)
+		fmt.Println("粘包:",buffer[:n],string(buffer[:n]))
+		if err != nil {
+			log.Logf(C.Conn.RemoteAddr().String(), " connection error: ", err)
+			return
 		}
 
-		msg,err := tool.Unpack(buf)
-		if err != nil {
-			//tool.DeviceList[C.DeviceNum].Online = false
-			fmt.Println("err:",err)
-			C.Conn.Close()
-			break
-		}else{
-			if string(msg) == "ok" {
-				C.Online = true
-				//tool.DeviceList[C.DeviceNum].Online = true
-				tool.DTUS[C.DeviceNum].Online = true //dtu设备在线
-				tool.DTUS[C.DeviceNum].Time = time.Now().Unix()
-				fmt.Println("reg ok",C.Address,C.DeviceNum)
-				go TickRead(C)
+		tmpBuffer = tool.Unpack(append(tmpBuffer, buffer[:n]...), readerChannel)
+		fmt.Println("tmpBuffer",tmpBuffer)
+	}
+}
+//读入消息并处理
+func tcpreader(C *tool.TcpConn,readerChannel chan []byte) {
+	for {
+		select {
+		case data := <-readerChannel:
+			fmt.Println("data",data,string(data))
+			if C.DeviceNum == "" {
+				C.DeviceNum = string(data)[:6]
 			}else{
-				handler := tool.TcpHandler{}
-				handler.SlaveId = C.Address
-				fmt.Println("server 接收数据",msg)
-
-				pdu,_ := handler.Decode(msg)
-				//fmt.Println("pdu",pdu,err,msg[6:7],msg)
-				//fmt.Println(tool.DTUS[C.DeviceNum].PLCS)
-				tool.DTUS[C.DeviceNum].PLCS[uint16(pdu.Address)].Online = true
-				switch pdu.FunctionCode {
-				case 1:
-					Kaiguan = tool.KaiGuan(pdu.Data[1:])
-					//fmt.Println(pdu.Data,"Kaiguan",Kaiguan, len(Kaiguan))
-					//fmt.Println(tool.DTUS["abcdef"].PLCS)
-					for k,v := range Kaiguan {
-						kstr := strconv.Itoa(k)
-						//fmt.Println(kstr,tool.DTUS["abcdef"].PLCS["02"])
-						vstr,_ := strconv.Atoi(v)
-						if value,ok := tool.DTUS[C.DeviceNum].PLCS[uint16(vstr)]; ok {
-							//fmt.Println("1:" + kstr)
-							if val,ok1 := value.Points["1:" + kstr];ok1 {
-								val.Value = vstr
-							}
-
-						}
-
-					}
-				case 3:
-					FuncValue  = tool.FuncDecode(pdu.Data[1:])
-					fmt.Println("funcvalue:",FuncValue)
-				}
+				fmt.Println("data",string(data))
 
 			}
 
 		}
-
 	}
 }

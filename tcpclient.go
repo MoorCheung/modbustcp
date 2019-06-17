@@ -11,9 +11,10 @@ import (
 func main(){
 	fmt.Println("tcp client")
 	go TcpConn()
-	http.ListenAndServe("0.0.0.0:8082", nil)
+	http.ListenAndServe("0.0.0.0:8083", nil)
 	
 }
+
 func TcpConn(){
 	tcpaddr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:9001")
 	if err != nil {
@@ -23,8 +24,12 @@ func TcpConn(){
 		if err != nil {
 			fmt.Println(err)
 		}else{
-			str := "abcdef02"
-			tcpconn.Write([]byte(str))
+			str := "abcdef123456"
+			packet := tool.Packet([]byte(str))
+			tcpconn.Write(packet)
+			tcpconn.Write(packet)
+			tcpconn.Write(packet)
+			tcpconn.Write(packet)
 			go TcpRead(tcpconn)
 			go TcpClientWrite(tcpconn)
 			go Tick()

@@ -7,19 +7,25 @@ import (
 	"fmt"
 )
 const (
-	ConstHeader          = "0000"
+	//ConstHeader        =   "0000"
 	ConstHeaderLength          = 4
 	ConstSaveDataLength        = 2
 )
 
+var ConstHeader = []byte{0x00,0x00,0x00,0x00}
+var ConstRegHeader = []byte{0x00,0x00,0x10,0x10}
+//注册包
+func PacketReg(message []byte) []byte {
+	return append(append([]byte(ConstRegHeader), IntToBytes(len(message))...), message...)
+}
 //封包
 func Packet(message []byte) []byte {
-	fmt.Println(len([]byte(ConstHeader)),[]byte(ConstHeader), len(IntToBytes(len(message))))
 	return append(append([]byte(ConstHeader), IntToBytes(len(message))...), message...)
 }
 
 //解包
 func Unpack(buffer []byte, readerChannel chan []byte) []byte {
+	fmt.Println("解包",buffer)
 	length := len(buffer)
 
 	var i int
@@ -27,7 +33,7 @@ func Unpack(buffer []byte, readerChannel chan []byte) []byte {
 		if length < i+ConstHeaderLength+ConstSaveDataLength {
 			break
 		}
-		if string(buffer[i:i+ConstHeaderLength]) == ConstHeader {
+		if string(buffer[i:i+ConstHeaderLength]) == string(ConstHeader) {
 			messageLength := BytesToInt(buffer[i+ConstHeaderLength : i+ConstHeaderLength+ConstSaveDataLength])
 			fmt.Println("messageLength",messageLength)
 			if length < i+ConstHeaderLength+ConstSaveDataLength+messageLength {
