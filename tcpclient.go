@@ -27,9 +27,7 @@ func TcpConn(){
 			str := "abcdef123456"
 			packet := tool.Packet([]byte(str))
 			tcpconn.Write(packet)
-			tcpconn.Write(packet)
-			tcpconn.Write(packet)
-			tcpconn.Write(packet)
+
 			go TcpRead(tcpconn)
 			go TcpClientWrite(tcpconn)
 			go Tick()

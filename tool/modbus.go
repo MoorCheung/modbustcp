@@ -141,6 +141,21 @@ func (mb *tcpPackager) Verify(aduRequest []byte, aduResponse []byte) (err error)
 //  Protocol identifier: 2 bytes
 //  Length: 2 bytes
 //  Unit identifier: 1 byte
+func (mb *tcpPackager) Decode1(adu []byte) (pdu *ProtocolDataUnit, err error) {
+	// Read length value in the header
+	//length := binary.BigEndian.Uint16(adu[4:])
+	//pduLength := len(adu) - tcpHeaderSize
+	//if pduLength <= 0 || pduLength != int(length-1) {
+	//	err = fmt.Errorf("modbus: length in response '%v' does not match pdu data length '%v'", length-1, pduLength)
+	//	return
+	//}
+	pdu = &ProtocolDataUnit{}
+	// The first byte after header is function code
+	pdu.Address = adu[0]
+	pdu.FunctionCode = adu[1]
+	pdu.Data = adu[1:]
+	return
+}
 func (mb *tcpPackager) Decode(adu []byte) (pdu *ProtocolDataUnit, err error) {
 	// Read length value in the header
 	length := binary.BigEndian.Uint16(adu[4:])

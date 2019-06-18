@@ -27,7 +27,6 @@ func Packet(message []byte) []byte {
 func Unpack(buffer []byte, readerChannel chan []byte) []byte {
 	fmt.Println("解包",buffer)
 	length := len(buffer)
-
 	var i int
 	for i = 0; i < length; i = i + 1 {
 		if length < i+ConstHeaderLength+ConstSaveDataLength {
@@ -35,17 +34,14 @@ func Unpack(buffer []byte, readerChannel chan []byte) []byte {
 		}
 		if string(buffer[i:i+ConstHeaderLength]) == string(ConstHeader) {
 			messageLength := BytesToInt(buffer[i+ConstHeaderLength : i+ConstHeaderLength+ConstSaveDataLength])
-			fmt.Println("messageLength",messageLength)
 			if length < i+ConstHeaderLength+ConstSaveDataLength+messageLength {
 				break
 			}
 			data := buffer[i+ConstHeaderLength+ConstSaveDataLength : i+ConstHeaderLength+ConstSaveDataLength+messageLength]
 			readerChannel <- data
-
 			i += ConstHeaderLength + ConstSaveDataLength + messageLength - 1
 		}
 	}
-
 	if i == length {
 		return make([]byte, 0)
 	}

@@ -18,7 +18,7 @@ type ReqData struct {
 	Value int32
 	PlcAddress string
 }
-var tcpWrite = make(chan []byte,10)
+
 type RespData struct {
 	Code int32
 	Data []*tool.DeviceInfo
@@ -129,8 +129,9 @@ func RouterWrite(resp http.ResponseWriter, req *http.Request) {
 	json.Unmarshal(body,reqData)
 	fmt.Println(reqData)
 	results := ModbusWrite(2,reqData)
+	fmt.Println(results)
 	//tool.DTUS["abcdef"].PLCS["2"].
-	tcpWrite <- results
+	//tcpWrite <- results
 	resp.Header().Set("Content-Type","application/json")
 	data := &RespData{}
 	data.Code = 200
@@ -147,8 +148,7 @@ func Router(resp http.ResponseWriter, req *http.Request) {
 	reqData := &ReqData{}
 	json.Unmarshal(body,reqData)
 	results := ModbusWrite(2,reqData)
-	tcpWrite <- results
-
+fmt.Println(results)
 	resp.Header().Set("Content-Type","application/json")
 	type Data struct {
 		Code int32
@@ -225,10 +225,10 @@ func TcpWrite(C *tool.TcpConn){
 	//通过通道进行写
 	for {
 		select {
-		case results := <- tcpWrite :
-			fmt.Println("发送数据",results)
-			//results,err := server.ServerReadHoldingRegisters(2,1)
-			C.Conn.Write(results)
+		//case results := <- tcpWrite :
+		//	fmt.Println("发送数据",results)
+		//	//results,err := server.ServerReadHoldingRegisters(2,1)
+		//	C.Conn.Write(results)
 		}
 	}
 }
@@ -245,13 +245,13 @@ func TickRead(C *tool.TcpConn){
 			//获取开关量
 			results, err := server.ServerReadCoils(0, 18)
 			results1, err := server.ServerReadHoldingRegisters(0, 8)
-			fmt.Println(err)
-			for {
-				tcpWrite <- results
-				time.Sleep(1*time.Second)
-				tcpWrite <- results1
-				time.Sleep(1*time.Second)
-			}
+			fmt.Println(err,results,results1)
+			//for {
+			//	tcpWrite <- results
+				//time.Sleep(1*time.Second)
+				//tcpWrite <- results1
+				//time.Sleep(1*time.Second)
+			//}
 		}
 
 	}
@@ -278,8 +278,9 @@ func TcphandleConnection(C *tool.TcpConn){
 
 	//声明一个管道用于接收解包的数据
 	readerChannel := make(chan []byte, 16)
-	go tcpreader(C ,readerChannel)
-
+	writerChannel := make(chan []byte, 16)
+	go tcpreader(C ,readerChannel,writerChannel)
+	go tcpWrite(C,writerChannel)
 	buffer := make([]byte, 1024)
 	for {
 		n, err := C.Conn.Read(buffer)
@@ -294,16 +295,57 @@ func TcphandleConnection(C *tool.TcpConn){
 	}
 }
 //读入消息并处理
-func tcpreader(C *tool.TcpConn,readerChannel chan []byte) {
+func tcpreader(C *tool.TcpConn,readerChannel chan []byte,writerChannel chan []byte) {
 	for {
 		select {
 		case data := <-readerChannel:
 			fmt.Println("data",data,string(data))
 			if C.DeviceNum == "" {
 				C.DeviceNum = string(data)[:6]
-			}else{
-				fmt.Println("data",string(data))
+				//通过设备id找到设备信息
+				fmt.Println("all device",tool.DTUS[C.DeviceNum].PLCS[uint16(02)])
+				//发送读
+				handler := &tool.TcpHandler{}
+				handler.SlaveId = 2
+				server := tool.NewServer(handler)
+				//获取开关量
+				results, err := server.ServerReadCoils(0, 18)
+				fmt.Println(err)
+				writerChannel <- results
+				//results1, err := server.ServerReadHoldingRegisters(0, 8)
 
+			}else{
+				fmt.Println("devicenum存在",data)
+				handler := tool.TcpHandler{}
+				handler.SlaveId = 2
+				pdu,err := handler.Decode1(data)
+				fmt.Println(pdu,err)
+				switch  pdu.FunctionCode{
+				case 1:
+					Kaiguan = tool.KaiGuan(pdu.Data[1:])
+					fmt.Println(pdu.Data,"Kaiguan",Kaiguan, len(Kaiguan))
+					for k,v := range Kaiguan {
+						kstr := strconv.Itoa(k)
+						//fmt.Println(kstr,tool.DTUS["abcdef"].PLCS["02"])
+						vstr, _ := strconv.Atoi(v)
+						fmt.Println(vstr)
+						if value, ok := tool.DTUS[C.DeviceNum].PLCS[uint16(pdu.Address)].Points[kstr]; ok {
+							value.Value = vstr
+						}
+					}
+				}
+
+			}
+
+		}
+	}
+}
+func tcpWrite(C * tool.TcpConn,writerChannel chan []byte){
+	for {
+		select {
+		case byte,ok := <-writerChannel:
+			if ok {
+				C.Conn.Write(byte)
 			}
 
 		}
