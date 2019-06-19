@@ -29,6 +29,8 @@ type TcpConn struct {
 	DeviceNum string
 	WriteChan chan []byte
 	ReadChan chan []byte
+	WriteContent []byte
+	ReadContent []byte
 }
 type DeviceInfo struct {
 	DeviceName string

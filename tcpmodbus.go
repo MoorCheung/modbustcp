@@ -244,6 +244,7 @@ func TickRead(C *tool.TcpConn){
 			server := tool.NewServer(handler)
 			//获取开关量
 			results, err := server.ServerReadCoils(0, 18)
+			C.WriteContent = results
 			results1, err := server.ServerReadHoldingRegisters(0, 8)
 			fmt.Println(err,results,results1)
 			//for {
@@ -299,19 +300,23 @@ func tcpreader(C *tool.TcpConn,readerChannel chan []byte,writerChannel chan []by
 	for {
 		select {
 		case data := <-readerChannel:
+			C.WriteContent = nil
+			C.ReadContent  = nil
 			fmt.Println("data",data,string(data))
 			if C.DeviceNum == "" {
 				C.DeviceNum = string(data)[:6]
+				C.Online = true
+				go PlcsRead(C,writerChannel)
 				//通过设备id找到设备信息
-				fmt.Println("all device",tool.DTUS[C.DeviceNum].PLCS[uint16(02)])
-				//发送读
-				handler := &tool.TcpHandler{}
-				handler.SlaveId = 2
-				server := tool.NewServer(handler)
-				//获取开关量
-				results, err := server.ServerReadCoils(0, 18)
-				fmt.Println(err)
-				writerChannel <- results
+				//fmt.Println("all device",tool.DTUS[C.DeviceNum].PLCS[uint16(02)])
+				////发送读
+				//handler := &tool.TcpHandler{}
+				//handler.SlaveId = 2
+				//server := tool.NewServer(handler)
+				////获取开关量
+				//results, err := server.ServerReadCoils(0, 18)
+				//fmt.Println(err)
+				//writerChannel <- results
 				//results1, err := server.ServerReadHoldingRegisters(0, 8)
 
 			}else{
@@ -322,17 +327,10 @@ func tcpreader(C *tool.TcpConn,readerChannel chan []byte,writerChannel chan []by
 				fmt.Println(pdu,err)
 				switch  pdu.FunctionCode{
 				case 1:
-					Kaiguan = tool.KaiGuan(pdu.Data[1:])
-					fmt.Println(pdu.Data,"Kaiguan",Kaiguan, len(Kaiguan))
-					for k,v := range Kaiguan {
-						kstr := strconv.Itoa(k)
-						//fmt.Println(kstr,tool.DTUS["abcdef"].PLCS["02"])
-						vstr, _ := strconv.Atoi(v)
-						fmt.Println(vstr)
-						if value, ok := tool.DTUS[C.DeviceNum].PLCS[uint16(pdu.Address)].Points[kstr]; ok {
-							value.Value = vstr
-						}
-					}
+					UpdatePointsStatus(pdu,C.DeviceNum)
+				case 3:
+					fmt.Println(pdu.FunctionCode,pdu.Data)
+
 				}
 
 			}
@@ -340,14 +338,70 @@ func tcpreader(C *tool.TcpConn,readerChannel chan []byte,writerChannel chan []by
 		}
 	}
 }
+//写数据
 func tcpWrite(C * tool.TcpConn,writerChannel chan []byte){
 	for {
 		select {
 		case byte,ok := <-writerChannel:
 			if ok {
-				C.Conn.Write(byte)
+				for {
+					if C.WriteContent == nil {
+						C.Conn.Write(byte)
+						break
+					}
+				}
 			}
-
 		}
+	}
+}
+//设备下所有plc序号读取
+func PlcsRead(C *tool.TcpConn,writerChannel chan []byte){
+	for {
+		if C.Online {
+			if PLCS,ok := tool.DTUS[C.DeviceNum];ok {
+				plcs := PLCS.PLCS
+				for k,_ := range plcs {
+					fmt.Println("读取pcl地址",byte(k))
+					//发送读
+					handler := &tool.TcpHandler{}
+					handler.SlaveId = byte(k)
+					server := tool.NewServer(handler)
+					//获取开关量
+					results, err := server.ServerReadCoils(0, 18)
+
+					if C.WriteContent == nil {
+						writerChannel <- results
+					}else{
+						time.AfterFunc(time.Second*3, func() {
+							writerChannel <- results
+						})
+					}
+
+
+					//
+					bytes, err := server.ServerReadHoldingRegisters(0, 8)
+					fmt.Println(err)
+
+					writerChannel <- bytes
+				}
+			}
+			time.Sleep(10*time.Second)
+		}else{
+			break
+		}
+	}
+
+}
+//更新设备点
+func UpdatePointsStatus(p *tool.ProtocolDataUnit ,DeviceNum string){
+	kg := tool.KaiGuan(p.Data[1:])
+	tool.DTUS[DeviceNum].PLCS[uint16(p.Address)].Online = true
+	for k,v := range kg {
+		kstr := strconv.Itoa(k)
+		vstr, _ := strconv.Atoi(v)
+		if value, ok := tool.DTUS[DeviceNum].PLCS[uint16(p.Address)].Points["1:" + kstr]; ok {
+			value.Value = vstr
+		}
+		//fmt.Println("更新状态:",tool.DTUS[DeviceNum].PLCS[uint16(p.Address)].Points)
 	}
 }

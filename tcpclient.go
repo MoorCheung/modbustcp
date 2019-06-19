@@ -92,6 +92,10 @@ func Tick(){
 					bb := []byte{0,0,0,0,0,6,02,01,03,0xff,0xff,0x02}
 					fmt.Println("回复消息",bb)
 					TcpWritedChan<- bb
+				}else if  pdu.FunctionCode == 3 {
+					bb := []byte{0,0,0,0,0,0x0b,02,03,0x08,0x03,0xe8,0x12,0x88,0x03,0x04,0x8a,0x64}
+					fmt.Println("回复消息",bb)
+					TcpWritedChan<- bb
 				}
 			}
 
